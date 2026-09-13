@@ -1,0 +1,4 @@
+interface:
+  display_name: "toddle-skill"
+  short_description: "让 AI 刷视频、逛 B 站，理解画面与语言，逐渐认识你的近期兴趣"
+  default_prompt: "用 $toddle-skill 开始刷抖音短视频，看到有意思的内容告诉我，我叫停时再结束。"
