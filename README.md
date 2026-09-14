@@ -21,7 +21,7 @@ The name means taking small, unsteady steps. Start with one video.
 
 ## Start browsing
 
-You need an agent that can control a browser, read pages and view images. **Codex is the tested environment.** Connect its browser and make sure you can access the platform, signing in if needed. toddle provides the skill and media helpers; your environment provides browser access and platform accounts.
+**Your agent needs browser control and image reading.** toddle uses connected browser tools or helps set up a permitted browser CLI through Shell, reusing your current browser and login. It aims to keep browsing in the background while you use other apps. Setup, permissions and playback checks are covered in [browser access across harnesses](references/browser.md).
 
 **1. Install** with the [skills CLI](https://github.com/vercel-labs/skills), with Node.js and Git available:
 
@@ -47,7 +47,7 @@ git clone https://github.com/ringozzt/toddle-skill.git \
   "${CODEX_HOME:-$HOME/.codex}/skills/toddle-skill"
 ```
 
-On Windows, the default Codex location is `%USERPROFILE%\.codex\skills\toddle-skill`. Check an existing installation before replacing it so you keep local edits. Other agents need equivalent browser, image and file tools; their compatibility has not been verified here.
+On Windows, the default Codex location is `%USERPROFILE%\.codex\skills\toddle-skill`. Check an existing installation before replacing it so you keep local edits. Browser sessions have been exercised in Codex and in dsh on macOS through a Shell browser CLI. Other harnesses can use native tools or a CLI with image reading; verify the selected route under its actual permissions.
 
 </details>
 
@@ -59,7 +59,9 @@ Pick videos that spark your curiosity, look into them, and follow what you find.
 Keep going until I say stop.
 ```
 
-Your agent starts with the page, actual video images and readable captions. When it needs more evidence, it handles media downloads, frame sampling or transcription. You can begin browsing without first assembling a video toolchain.
+Your agent starts with the page, actual video images and readable captions. When a video has speech without usable captions, it obtains the audio and transcribes it, then connects the spoken content with the frames. It handles the required tools; you can begin browsing without first assembling a video toolchain.
+
+The same browsing loop can take more steps or tokens in some harnesses. The priority is completing it: choose a video, inspect it, follow the feed and save useful interest notes. If the environment cannot provide a permitted browser connection, the agent explains the blocker; supplied links and local media remain a partial fallback.
 
 > [!NOTE]
 > Long sessions can consume substantial model tokens. Set a video count or time limit whenever you want.
@@ -83,7 +85,7 @@ Without a limit, the agent keeps browsing in the current task until you stop it 
 
 **It looks for evidence in the video.** Your agent connects timestamps, visible events and language before making a claim. When the browser leaves a gap, it can obtain accessible media, sample frames more closely or transcribe speech. It records how much it examined and reuses existing notes and media when you return.
 
-**You can correct its picture of your interests.** Recommendations, your own actions and your explicit feedback remain separate kinds of evidence. The agent's clicks do not count as your preferences. Your corrections guide later choices through local notes; they do not retrain the underlying model or reveal the platform's internal profile. See the [interest-recording rules](references/interests.md) (Chinese).
+**You can correct its picture of your interests.** Recommendations, your own actions and your explicit feedback remain separate kinds of evidence. The agent's clicks do not count as your preferences. Your corrections guide later choices through local notes; they do not retrain the underlying model or reveal the platform's internal profile. See the [interest-recording rules](references/interests.md).
 
 ## Media tools, when needed
 
@@ -91,16 +93,18 @@ The skill includes three Python helpers. You do not need separate video-analysis
 
 | Helper | Purpose |
 |---|---|
-| [`doctor.py`](scripts/doctor.py) | Find reusable Python environments, package versions, FFmpeg and local model candidates. |
+| [`doctor.py`](scripts/doctor.py) | Find Python packages, browser/media CLIs on PATH and local models. An optional write check selects a permitted data directory. |
 | [`sample_frames.py`](scripts/sample_frames.py) | Extract frames at their actual presentation times, with contact sheets and a JSON manifest. Sample a selected interval more densely. |
 | [`audio_to_text.py`](scripts/audio_to_text.py) | Produce Markdown, SRT and source-linked JSON with faster-whisper or MLX Whisper. |
 
-The agent uses [yt-dlp](https://github.com/yt-dlp/yt-dlp), [PyAV](https://github.com/PyAV-Org/PyAV), [Pillow](https://github.com/python-pillow/Pillow) and either [faster-whisper](https://github.com/SYSTRAN/faster-whisper) or [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper). It reuses installed tools and cached models, adding missing components as needed. See [media setup and fallback paths](references/deeper.md) (Chinese) for commands and runtime configuration.
+The agent uses [yt-dlp](https://github.com/yt-dlp/yt-dlp), [PyAV](https://github.com/PyAV-Org/PyAV), [Pillow](https://github.com/python-pillow/Pillow) and either [faster-whisper](https://github.com/SYSTRAN/faster-whisper) or [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper). It reuses installed tools and cached models, adding missing components as needed. See [media setup and fallback paths](references/deeper.md) for commands and runtime configuration.
 
 <details>
 <summary>Do I need to download videos and install models first?</summary>
 
 You can start with browser images and readable captions. Closer inspection may require downloading a video or audio track. Speech without usable captions needs transcription; local Whisper is the included fallback. The agent reserves this work for selected content rather than downloading every homepage card.
+
+In restricted sessions, `audio_to_text.py --cache-root /absolute/workspace/path` keeps Hugging Face and auxiliary caches inside that directory. `--model-root` alone does not redirect every cache. See the [sandbox setup](references/deeper.md#writable-data-and-cache-directories).
 
 The helpers need Python 3.10+ and their relevant packages. MLX Whisper runs on Apple Silicon and needs FFmpeg. A fresh large-v3-turbo model download is about 1.6 GB, so setup time depends on your machine and network. A text-only environment can work with supplied links or local media through available tools, but cannot operate a homepage feed without browser control.
 
@@ -108,7 +112,7 @@ The helpers need Python 3.10+ and their relevant packages. MLX Whisper runs on A
 
 ## Your notes and your controls
 
-The default data directory is `${XDG_DATA_HOME:-~/.local/share}/toddle-skill/`:
+The default data directory is `${XDG_DATA_HOME:-~/.local/share}/toddle-skill/`. In a workspace-only sandbox, the agent can use an ignored `work/toddle-skill/` directory, tell you once, and reuse it for the task. If no permitted location is writable, it keeps notes in the conversation and reports that they were not saved. The selected directory contains:
 
 ```text
 history.jsonl   Viewing history, sources, coverage and observations
@@ -116,7 +120,7 @@ interests.json  Interest hypotheses, evidence and corrections
 runtime.json    Optional paths to your local Python environments and models
 ```
 
-Keep models, downloaded media and private notes outside this repository. This project does not automatically publish those files. Page text, images and transcripts used for analysis enter your AI provider's context and follow that product's data settings.
+Keep models, downloaded media and private notes out of version control. Workspace-local data must be ignored and untracked; ignoring an already committed file does not remove it from Git. This project does not automatically publish those files. Page text, images and transcripts used for analysis enter your AI provider's context and follow that product's data settings.
 
 Browsing does not automatically like, tip, follow, comment, message or share with friends. On Douyin, “Copy link” in the share panel is used to record a source. Downloads depend on the video, login state, region and tool version.
 
@@ -128,14 +132,16 @@ Frame sampling shows only the sampled moments. Speech recognition can mishear wo
 SKILL.md             Instructions your agent follows
 agents/openai.yaml   Codex display metadata
 scripts/             Environment checks, frame sampling and transcription
-references/          Media setup and interest-recording guidance
-tests/               Environment-discovery tests
+references/          Browser access, media setup and interest-recording guidance
+tests/               Environment, cache and transcript-timestamp tests
 assets/              README artwork
 ```
 
 Development checks on Apple Silicon covered Bilibili media, two Douyin short links, existing YouTube subtitles, timestamped transcription and frame sampling, including variable frame rates, final-frame coverage and overwrite protection. These are sample checks, not coverage of every platform state or operating system.
 
-To run the environment-discovery tests without downloading models:
+The dsh test covered 20 Bilibili and 21 Douyin works using the user's signed-in Chrome, background frame sampling and local speech transcription. Coverage was sampled; uncertain speech remained explicit. Browser access and audio acquisition were tested under workspace-write permissions.
+
+To run the environment, cache and transcript-timestamp tests without downloading models:
 
 ```bash
 python3 -m unittest discover -s tests -v

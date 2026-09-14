@@ -13,6 +13,66 @@ spec.loader.exec_module(doctor)
 
 
 class DoctorTests(unittest.TestCase):
+    def test_path_downloader_is_found_without_python_package(self):
+        with tempfile.TemporaryDirectory() as temp:
+            response = subprocess.CompletedProcess([], 0, '{"yt_dlp":null}', '')
+            with patch.object(doctor.subprocess, 'run', return_value=response), \
+                 patch.object(doctor.shutil, 'which', side_effect=lambda name: '/tools/' + name if name in ('yt-dlp', 'agent-browser') else None):
+                result = doctor.inspect(Path(temp))
+            self.assertEqual(result['commands']['yt-dlp'], '/tools/yt-dlp')
+            self.assertEqual(result['commands']['agent-browser'], '/tools/agent-browser')
+            self.assertIsNone(result['commands']['playwright-cli'])
+            self.assertIsNone(result['runtimes'][0]['packages']['yt_dlp'])
+
+    def test_denied_write_uses_explicit_fallback_without_touching_history(self):
+        with tempfile.TemporaryDirectory() as temp:
+            preferred = Path(temp).resolve() / 'restricted'
+            fallback = Path(temp).resolve() / 'work/toddle-skill'
+            fallback.mkdir(parents=True)
+            history = fallback / 'history.jsonl'
+            history.write_text('existing record\n')
+            original = doctor.tempfile.TemporaryFile
+
+            def permission_check(*args, **kwargs):
+                if kwargs.get('dir') == preferred:
+                    raise PermissionError(1, 'Operation not permitted', str(preferred))
+                return original(*args, **kwargs)
+
+            with patch.object(doctor.tempfile, 'TemporaryFile', side_effect=permission_check):
+                result = doctor.inspect(preferred, check_write=True, fallback_root=fallback)
+            self.assertEqual(result['state_root'], str(fallback))
+            self.assertTrue(result['storage']['fallback_used'])
+            self.assertEqual(result['storage']['failed_candidates'][0]['errno'], 1)
+            self.assertEqual(history.read_text(), 'existing record\n')
+            self.assertEqual(list(fallback.iterdir()), [history])
+
+    def test_unwritable_roots_fail_before_running_interpreters(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.object(doctor.tempfile, 'TemporaryFile', side_effect=PermissionError(1, 'denied')), \
+                 patch.object(doctor.subprocess, 'run') as run:
+                with self.assertRaisesRegex(OSError, 'No writable data directory'):
+                    doctor.inspect(Path(temp) / 'one', check_write=True,
+                                   fallback_root=Path(temp) / 'two')
+            run.assert_not_called()
+
+    def test_write_check_keeps_writable_preferred_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            preferred = Path(temp).resolve() / 'preferred'
+            fallback = Path(temp).resolve() / 'fallback'
+            result = doctor.inspect(preferred, check_write=True, fallback_root=fallback)
+            self.assertEqual(result['state_root'], str(preferred))
+            self.assertTrue(result['storage']['write_checked'])
+            self.assertFalse(result['storage']['fallback_used'])
+            self.assertEqual(list(preferred.iterdir()), [])
+            self.assertFalse(fallback.exists())
+
+    def test_fallback_requires_explicit_write_check(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'unused'
+            with self.assertRaisesRegex(ValueError, 'requires --check-write'):
+                doctor.inspect(root, fallback_root=Path(temp) / 'fallback')
+            self.assertFalse(root.exists())
+
     def test_missing_environment_does_not_create_state(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / 'state'

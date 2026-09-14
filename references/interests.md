@@ -1,34 +1,38 @@
-# 从 feed 积累近期兴趣画像
+# Build a revisable picture of recent interests
 
-用户希望通过自己的推荐流让 AI 更了解自己时，将内容观察变成可修订的偏好假设。先读取本地已有画像，结合当前任务继续积累；没有画像也直接开始浏览，不要求用户填写问卷。
+When the user wants you to learn about them through their feed, turn content observations into tentative preferences. Read an existing local profile before adding evidence from the current task. If none exists, begin browsing without asking the user to complete a questionnaire.
 
-## 证据要分清来源
+Use the user's preferred language for preference descriptions and notes. Preserve original titles and quotations, and keep schema keys and enum values in English.
 
-| 来源 | 能支持什么 |
+## Separate the sources of evidence
+
+| Source | What it supports |
 |---|---|
-| feed_exposure：平台展示了某类作品 | 这类内容在本次推荐样本中较常见；不能证明用户喜欢 |
-| user_action：亲眼观察到的用户选择或跳过 | 对这条作品或这次情境的行为线索；不要把代理的点击算成用户行为 |
-| user_statement：用户明确说喜欢、不喜欢或纠正判断 | 对相应内容偏好的直接反馈，优先用于修正画像 |
+| `feed_exposure`: the platform displayed a work | This kind of content appeared in the current sample; it does not prove the user likes it. |
+| `user_action`: an observed choice or skip by the user | A behavioral signal about that work or situation. Do not count the agent's clicks as user actions. |
+| `user_statement`: explicit approval, dislike or correction | Direct feedback about the relevant preference. Give it priority when revising the profile. |
 
-讨论主题、创作者风格、长短视频、讲解深度、剪辑节奏等内容偏好。不要由此推断宗教、政治身份、性取向、族裔、健康状况等敏感特征。若用户只是给一条链接，先完成该条任务，不单凭这一条建立长期画像。
+Describe content preferences such as topics, creator styles, video length, explanation depth and editing pace. Do not infer sensitive traits such as religion, political identity, sexual orientation, ethnicity or health. If the user provides only one link, complete that task without building a long-term profile from that single item.
 
-## 最小记录
+Account for evidence coverage. A visual-only record can support an observation about images or editing, but not an unheard narrator's topic or argument. When captions or ASR add spoken content, revise the associated notes and hypotheses with that evidence. Keep pending or unavailable speech explicit; do not strengthen a preference simply because the same visual-only item was processed again.
 
-在 `${XDG_DATA_HOME:-~/.local/share}/toddle-skill/interests.json` 保存假设列表。文件不存在就创建，已有文件先读取再修改；输出先写同目录临时文件再原子替换，避免中断损坏记录。保留证据和反例，用户纠正后更新相应假设；不要用一次新观察覆盖所有旧记录。
+## Minimum record
 
-每条假设包含：
+Store hypotheses in `interests.json` inside the same writable data directory chosen for viewing history. The normal root is `${XDG_DATA_HOME:-~/.local/share}/toddle-skill`; a workspace-only session can use `<workspace>/work/toddle-skill/`. Reuse that choice when resuming, disclose a fallback once, and do not silently merge separate profiles. Create the file if missing; otherwise read it before making changes. Write the updated content to a temporary file in the same directory, then replace the original atomically and confirm success. On a write failure, retain notes in the conversation and report that persistence failed. Preserve evidence and counterexamples; one new observation must not overwrite the entire profile.
 
-- `preference`：具体内容偏好，例如“近期可能对电影运镜拆解感兴趣”。
-- `basis`：feed_exposure / user_action / user_statement。
-- `evidence`：作品 ID/URL、观察日期、关联观看笔记，以及实际观察到的现象。
-- `counterevidence`：反例和用户纠正；没有时留空。
-- `status`：tentative / user_confirmed / rejected。
-- `updated_at`：最后更新日期。
+Each hypothesis includes:
 
-只有用户明确确认时才使用 user_confirmed。展示频次可以描述为“本次 12 条中有 4 条”，分母必须来自实际记录；重播、重复卡片、广告和不同分 P 不随意混计。没做校准就不给精确概率。
+- `preference`: a specific content preference, such as a possible recent interest in explanations of camera movement in films.
+- `basis`: `feed_exposure` / `user_action` / `user_statement`.
+- `evidence`: video IDs or URLs, observation dates, associated viewing notes and what was actually observed.
+- `counterevidence`: counterexamples and user corrections; leave empty when none exist.
+- `status`: `tentative` / `user_confirmed` / `rejected`.
+- `updated_at`: the last update date.
 
-## 让画像帮助下一次浏览
+Use `user_confirmed` only after explicit confirmation. You can describe exposure as “4 of the 12 items in this sample,” but the denominator must come from actual records. Account for replays, duplicate cards, ads and Bilibili parts without double-counting. Do not assign precise probabilities without calibration.
 
-按已确认偏好与本次任务选片，同时保留用户探索新主题的空间。画像被用户纠正时，直接采纳对应范围的纠正；新的任务指令优先于历史偏好。用户叫停时，可以用几句话说明近期线索、依据、反例和仍不确定的部分，不必每条视频都输出画像。
+## Use the profile to guide later browsing
 
-观看记录、画像和模型目录留在本机工作数据目录，不放进 skill 仓库。它们不会由本项目自动发布到 GitHub；处理过程中的页面文字和画面仍会进入所用 AI 的上下文，具体数据处理取决于用户的 AI 产品和账户设置。
+Choose videos using confirmed preferences and the current task, while leaving room to explore unfamiliar topics. Apply a user's correction within its stated scope. Current instructions take precedence over historical preferences. When the user stops browsing, a few sentences about recent signals, evidence, counterexamples and uncertainty are enough; a profile report for every video is unnecessary.
+
+Keep viewing history, profiles and models under the selected local data root, separate from tracked skill files. If that root is inside a workspace repository, verify that it is ignored and untracked. This project does not automatically publish these files to GitHub. Page text and images used during analysis still enter the chosen AI's context; data handling depends on the AI product and account settings.

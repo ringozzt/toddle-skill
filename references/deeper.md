@@ -1,39 +1,74 @@
-# 只在需要细看时使用
+# Use media tools when closer inspection is needed
 
-普通浏览只需要能操作浏览器、读页面和看截图。下面的能力按需使用，不是开始刷视频的前置步骤。
+Ordinary browsing starts with browser control, page reading and screenshots. Use the capabilities below as needed, not as prerequisites for opening the feed.
 
-运行本 skill 的 `scripts/doctor.py` 可只读检测当前 Python、托管 runtime、明确配置的 Python 环境、FFmpeg 和本地模型候选；不联网、不安装、不加载模型、不读取 Cookie。输出 `runtimes` 给出实际可复用路径。检测会执行这些可信 Python 的包查询，不扫描全部磁盘或浏览器账户。
+For a video with speech, checking language is part of ordinary watching. Read reliable captions covering the observed interval; when captions are absent or insufficient, use the audio route below. A silent screenshot does not establish that the video has no narration. Preserve the transcript's source interval and align it with frames before drawing conclusions. Record an unavailable speech track explicitly instead of reporting visual sampling as complete audiovisual understanding.
 
-已复用的能力与历史验证（2026-09-13—14）：
+Run this skill's `scripts/doctor.py` when a tooling check is needed. By default it only reads the current Python interpreter, the managed runtime, explicitly configured Python environments, PATH commands and local model candidates. `commands["yt-dlp"]` reports the standalone executable separately from `runtimes[*].packages.yt_dlp`; a missing module does not mean the PATH command is missing. Use that executable directly if appropriate. Detection runs package queries through trusted interpreters, without installing packages, loading models, accessing the network or reading cookies. It cannot establish whether the agent has browser-control tools.
 
-- 随包 `scripts/sample_frames.py` 来自 `video-analyze`：连续取帧、局部加密、真实 PTS、联系表、变帧率与末帧完整性；实际打开图片才算观察画面。
-- 随包 `scripts/audio_to_text.py` 来自 `video-transcribe`：本地 faster-whisper / MLX Whisper，保留时间戳与来源。字幕优先，音轨兜底；原稿单独保留。
-- Apple Silicon 上用 yt-dlp 2026.08.19、PyAV/Pillow、本地 faster-whisper / MLX Whisper 跑通过样本。这些历史结果不意味着其他环境已经验证；使用前检查当前环境。
-- 实测过 B 站媒体、两条抖音短链下载和 YouTube 既有字幕读取；不保证其他视频、地区、登录内容或其他机器可用。Chrome 登录不保证命令行能解密 Cookie，公开音轨可能仍可访问。
+## Writable data and cache directories
 
-缺组件时仍可用浏览器画面和可见字幕继续浏览，明确范围。只有当前问题确实需要时才在独立 venv 安装所缺组件。不重装完整 MediaBrief/BiliNote 应用，不重复下载模型。large-v3-turbo 首次下载约 1.6 GB，只在需要且没有合适缓存模型时准备。
-
-对齐帧与文字时核对同一视频版本和音画起点；视频 PTS 与 ASR 时间可能因裁剪/片头不同而错位。平台人工字幕、自动字幕、画面字幕、本地 ASR 分开标注；简介/评论/弹幕不当口述。疑似乱码或幻觉直接弃用，保留未确认说明。
-
-本机此前的音频输入工具返回不支持，配乐、音色、音效、节拍尚未可靠听辨。只有当前工具明确支持并实际成功接收音频，才报告该次听到的声音；先确认是否上传音频、收费或下载模型，并遵循用户授权。不能用 ASR 包存在代替声音理解能力验证。
-
-已有独立环境时，可传 `--python /path/to/venv/bin/python`，多次传入以复用不同模块的环境；本地 MLX 模型用 `--mlx-model /path/to/model`。也可以在数据目录保存私有 `runtime.json`，内容为 `{"python": ["/path/to/venv/bin/python"], "mlx_model": "/path/to/model"}`。路径按实际情况填写，模型字段可省略；不要提交这个本机配置。
-
-## 无旧环境时的最小准备
-
-以下由 Codex 执行，不是让用户手动填配置的前置流程。需要 Python 3.10+；命令里的 `TODDLE_DATA` 不改写系统 HOME。先看 doctor 输出，有可用环境就直接用其 Python 跳过安装。没有合适 Python 时用现有可信包管理器或 uv 准备 Python 3.12，平台/网络阻塞如实说明。
+Choose the data root described in `SKILL.md` before writing records or preparing media tools. In a known workspace-only sandbox, use an ignored directory such as `$PWD/work/toddle-skill` directly. Otherwise, this optional check tests the normal root and an explicit fallback:
 
 ```bash
-TODDLE_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/toddle-skill"
+python3 "$SKILL/scripts/doctor.py" --check-write \
+  --fallback-root "$PWD/work/toddle-skill"
+```
+
+`$SKILL` is the installed skill directory. Unlike the default read-only mode, `--check-write` creates candidate directories if needed and writes a temporary probe file, which it removes. The JSON `state_root` is the chosen writable directory; `storage` records whether a fallback was used and which probes failed. Both paths failing produces a nonzero exit. Set `TODDLE_DATA` to that returned path for subsequent commands. When resuming a known local root, pass `--root "$TODDLE_DATA" --check-write`. An explicitly requested user path should not be changed without agreement; omit the fallback in that case.
+
+Keep `history.jsonl`, `interests.json`, `runtime.json`, notes and media under the chosen root. A successful probe does not guarantee that an existing individual file is writable: check each save and report failures. Do not use `mkdir -p` or `os.access` alone as proof of sandbox write permission, or let `tail`, `echo`, or a pipeline hide a failed command's exit status. Use `&&` or propagate the original status, then check expected outputs. Verify that workspace-local private files are ignored and untracked; `.gitignore` does not protect files already committed or force-added.
+
+For ASR in a restricted workspace, pass `--cache-root "$TODDLE_DATA/cache"` to `audio_to_text.py`. It checks the output/cache paths before loading an engine and sets `XDG_CACHE_HOME`, `HF_HOME`, `HF_HUB_CACHE`, `HF_XET_CACHE` and `HF_ASSETS_CACHE` inside that root before either engine imports. This applies only to the helper process. Without the flag, existing cache settings are preserved. `--model-root` controls faster-whisper's model location but does not redirect every auxiliary cache or Xet log.
+
+For other Python processes that access Hugging Face, set the equivalent environment before launch, using absolute paths:
+
+```bash
+export XDG_CACHE_HOME="$TODDLE_DATA/cache"
+export HF_HOME="$XDG_CACHE_HOME/huggingface"
+export HF_HUB_CACHE="$HF_HOME/hub"
+export HF_XET_CACHE="$HF_HOME/xet"
+export HF_ASSETS_CACHE="$HF_HOME/assets"
+```
+
+These are task-local settings, not edits to shell startup files. Reuse a readable cached model through `--model /path/to/model` when available. Hugging Face reads these variables at import time; see its [environment-variable reference](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables). If installing dependencies also needs a writable cache, use a task-local `PIP_CACHE_DIR` or `npm_config_cache` within the same permitted root. This does not grant missing browser tools or additional execution permissions.
+
+## Existing media capabilities
+
+Reused capabilities and historical validation, 2026-09-13–14:
+
+- `scripts/sample_frames.py` comes from video-analyze. It supports frame sampling, dense local sampling, actual presentation timestamps (PTS), contact sheets, variable frame rates and final-frame coverage. Open the resulting images before claiming visual observation.
+- `scripts/audio_to_text.py` comes from video-transcribe. It uses local faster-whisper or MLX Whisper and preserves timestamps and sources. Prefer captions, use audio as a fallback, and retain the original transcript separately.
+- Sample checks passed on Apple Silicon with yt-dlp 2026.08.19, PyAV/Pillow and local faster-whisper / MLX Whisper. These historical results do not establish compatibility with other environments; inspect the current setup before use.
+- Bilibili media, two Douyin short-link downloads and existing YouTube captions were tested. Other videos, regions, login states and machines may differ. A signed-in Chrome session does not guarantee that command-line tools can decrypt its cookies; public audio may still be accessible.
+
+If a component is missing, continue with available browser frames and visible captions and state the coverage. Install missing components in an isolated virtual environment only when the current question needs them. Do not reinstall the full MediaBrief/BiliNote applications or redownload cached models. A first large-v3-turbo download is about 1.6 GB; prepare it only when needed and no suitable cached model exists.
+
+When aligning frames and text, check that they come from the same video version and share the same starting point. Cropping or different intros can offset video PTS and ASR timestamps. Label human captions, platform auto-captions, visible subtitles and local ASR separately. Descriptions, comments and on-screen viewer messages are not speech transcripts. Discard garbled or apparently hallucinated output and record the uncertainty.
+
+If ASR returns only lyric-like or incoherent text, mark speech as uncertain. That result cannot establish the absence of narration, confirm singing or identify a soundtrack. Keep those limits when updating interest notes.
+
+The transcription helper checks segment times against decoded audio duration. Segments extending beyond it are retained in JSON as `unverified_segments` and excluded from the usable Markdown/SRT text; they are not silently clamped to the clip boundary. A run with retained uncertainty reports `completed_with_unverified_segments`. If no in-range speech remains, the helper fails instead of reporting a successful transcript. Review uncertain words even when every timestamp is valid.
+
+The audio-input tool used in prior local testing returned an unsupported-input result, so music, voice quality, effects and rhythm were not reliably heard. Report sound only when the current tool supports and successfully receives audio. First determine whether that route uploads audio, incurs charges or downloads a model, and follow the user's authorization. An installed ASR package is not proof of broader audio understanding.
+
+To reuse existing environments, pass `--python /path/to/venv/bin/python`; repeat it for separate module environments. Supply a local MLX model with `--mlx-model /path/to/model`. Alternatively, save a private `runtime.json` in the data directory containing `{"python": ["/path/to/venv/bin/python"], "mlx_model": "/path/to/model"}`. Use actual local paths; the model field is optional. Do not commit this machine-specific configuration.
+
+## Minimal setup without an existing environment
+
+The agent performs these steps when needed; users do not have to configure the toolchain before browsing. The helpers require Python 3.10+. `TODDLE_DATA` below does not replace the system's HOME variable. Inspect doctor output first and reuse a suitable interpreter instead of installing again. If no suitable Python exists, use an available trusted package manager or uv to prepare Python 3.12. Explain concrete platform or network blockers.
+
+```bash
+# TODDLE_DATA is the writable root already chosen for this task.
 python3 -m venv "$TODDLE_DATA/runtime"
 "$TODDLE_DATA/runtime/bin/python" -m pip install yt-dlp av Pillow
 ```
 
-Windows 使用 venv 的 `Scripts/python.exe`。不要重复创建已有 runtime。只有缺语音文字时再在该环境安装 `faster-whisper`；Apple Silicon 已有 mlx-whisper 和模型时直接复用。faster-whisper 默认 base、CPU/int8，首次需下载模型；base 会误识别，专名/关键句需要校对，已缓存较好模型时优先使用。安装失败保留一次具体错误，转到可用的画面/字幕路径，不无限重试。
+On Windows, use the virtual environment's `Scripts/python.exe`. Do not recreate an existing runtime. Add `faster-whisper` only when speech transcription is needed; on Apple Silicon, reuse an existing mlx-whisper installation and model. The bundled helper defaults to `base` on CPU with int8 when using faster-whisper, with a model download on first use. It can misrecognize speech, so check names and key statements; prefer a better cached model when available. If installation fails, retain the specific error and return to usable frames or captions rather than retrying indefinitely.
 
-## 最少命令
+## Essential commands
 
-`$PY` 是上述可用 Python，`$SKILL` 是当前 toddle-skill 目录，`$URL` 是已核对的公开作品 URL，`$OUT` 是新的该视频产物目录。不同模块可使用不同的既有 Python。文件名用固定名称/视频 ID，第三方文案不要拼进 shell 命令。
+`$PY` is a suitable interpreter, `$SKILL` is this skill's directory, `$URL` is a verified public video URL, and `$OUT` is a new output directory for that video. Different modules may use different existing interpreters. Use fixed filenames or video IDs; do not interpolate third-party prose into shell commands.
 
 ```bash
 "$PY" -m yt_dlp --ignore-config --no-playlist --socket-timeout 20 --retries 1 --skip-download --list-subs "$URL"
@@ -41,23 +76,45 @@ Windows 使用 venv 的 `Scripts/python.exe`。不要重复创建已有 runtime�
 "$PY" "$SKILL/scripts/sample_frames.py" "$OUT/source.mp4" --output-dir "$OUT/frames"
 ```
 
-以实际下载扩展名替换 `source.mp4`；这里取单个含视频的流，可能没有音轨，但可直接取帧而不强制先合并。需要语音时另取音轨；需要完整可播放媒体且有 FFmpeg 时再合并音视频。默认采样最多 72 帧，长片概览不等于完整观看；字幕看不清就打开原帧，动作太快就对具体区间用 `--start 6.8 --end 8.8 --interval 0.1` 加密。
+Replace `source.mp4` with the actual downloaded extension. This downloads a single stream containing video, which may omit audio; frame extraction does not require merging first. Obtain audio separately when speech matters. Merge audio and video if a complete playable file is needed and FFmpeg is available. The default sampling cap is 72 frames; an overview of a long video is not a full watch. Open original frames if captions are too small. For fast action, sample a specific interval more densely, for example `--start 6.8 --end 8.8 --interval 0.1`.
 
-有平台字幕则按实际语言轨下载：`--skip-download --write-subs --write-auto-subs --sub-langs '实际语言代码'`；排除 B 站 danmaku。无字幕才取音轨：
+When platform captions exist, select the actual language track with `--skip-download --write-subs --write-auto-subs --sub-langs 'actual-language-code'`. Exclude Bilibili danmaku. Obtain audio only when usable captions are unavailable:
 
 ```bash
 "$PY" -m yt_dlp --ignore-config --no-playlist --socket-timeout 20 --retries 1 -f 'bestaudio/best' -o "$OUT/audio.%(ext)s" "$URL"
-"$PY" "$SKILL/scripts/audio_to_text.py" "$OUT/audio.m4a" --output-dir "$OUT/transcript" --source-url "$URL"
+"$PY" "$SKILL/scripts/audio_to_text.py" "$OUT/audio.m4a" --output-dir "$OUT/transcript" --source-url "$URL" --cache-root "$TODDLE_DATA/cache"
 ```
 
-以实际音轨扩展名替换 `audio.m4a`。MLX 使用 `--engine mlx-whisper --model '已缓存模型目录'`，并需要 FFmpeg；faster-whisper 可直接使用本地模型目录，避免重复下载。纯音乐/无可靠语音不强行转写。
+Replace `audio.m4a` with the actual audio extension. For MLX, use `--engine mlx-whisper --model '/path/to/cached/model'`; FFmpeg is required. faster-whisper also accepts a local model directory to avoid another download. Do not force transcription of music or audio without reliable speech.
 
-## 选型依据（2026-09-14 核查）
+## When platform downloads fail
 
-默认保留 [yt-dlp](https://github.com/yt-dlp/yt-dlp) + PyAV/Pillow + 本地 Whisper，下载器负责取得媒体，Codex 负责解释画面，Whisper 负责语音文字。主页发现仍优先实际浏览器页面；替换组件需证明当前任务更容易完成，不按星数盲换。
+Treat failures as observations about a particular request, tool version and environment. Metadata access does not prove media access. Record the HTTP status and stage, avoid printing signed media URLs, cookies or tokens, and choose at most one evidence-based alternative after a failure.
 
-- [F2](https://github.com/Johnserf-Seed/f2/blob/main/f2/apps/douyin/dl.py) 提供抖音下载，但当前下载器构造过程要求 Cookie，未证明能简化本机已可用的匿名路径；列为备选，不默认安装。
-- [DouK-Downloader](https://github.com/JoeanAmier/TikTokDownloader) 可下载抖音/TikTok；当前 README 明示加密参数算法不再维护，初始化需配置 Cookie，不能作为无配置启动保证。
-- [bilibili-api](https://github.com/Nemo2011/bilibili-api) 和 [BBDown](https://github.com/nilaoda/BBDown) 当前默认仓库页已归档/停止维护，不新增为核心依赖。旧分支 README 可能仍可访问，选型以当前仓库状态为准。
+For audio extraction, compare the formats already returned for that work. Two bitrates can use the same failing CDN route while another format uses a different host or port. Choose the alternative using the observed failure and returned URLs; do not guess or rewrite CDN hostnames. A lower-bitrate track may be sufficient for speech transcription. Verify decoded audio and the resulting text instead of always maximizing bitrate, or claiming all formats failed after testing only two. Keep failed partial files separate from the next attempt and retain the source interval.
 
-以上备选只核查源码/项目说明，没有安装或宣称逐个实测。保留已通过样本的主链，不重复六工具评测。
+- **Bilibili HTTP 412:** A sandboxed session returned 412 while earlier anonymous public-video checks succeeded. The status alone does not establish the cause or prove that every video requires cookies. Use an available authorized browser session, supplied local media, or report the acquisition blocker. Browser sign-in does not guarantee command-line access; do not export credentials as a routine workaround.
+- **YouTube HTTP 403:** Check the installed yt-dlp version and the reported client/format failure. In one local session, `--extractor-args "youtube:player_client=android"` succeeded for short clips after default requests failed. This is a conditional alternative, not a default or guaranteed fix. Client and PO-token requirements change; consult the [yt-dlp YouTube guidance](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#youtube) before choosing a route.
+- **Only a segment is needed:** `--download-sections` reduces the requested scope and needs FFmpeg. It does not remove authorization or rate limits, and a successful segment does not establish that the whole video can be downloaded. For a selected, accessible interval:
+
+```bash
+"$PY" -m yt_dlp --ignore-config --no-playlist --socket-timeout 20 --retries 1 \
+  --download-sections '*100-170' -f 'bv*[height<=720]/b[height<=720]/bv*/best' \
+  -o "$OUT/clip.%(ext)s" "$URL"
+```
+
+Record the source interval and offset when downloading or trimming a clip. Frame and ASR times usually start from the local clip; add the verified offset when citing the original video, and check alignment against an actual frame. For example, clip time `00:06.7` from an audio segment starting at 100 seconds corresponds to source time `01:46.7`.
+
+- **Captions HTTP 429:** Stop repeated caption requests. Respect a provided retry delay, use already acquired media for local ASR if suitable, or report that captions are unavailable. Do not describe rate limiting as an absence of speech or captions.
+
+## Tool selection rationale, reviewed 2026-09-14
+
+Keep [yt-dlp](https://github.com/yt-dlp/yt-dlp), PyAV/Pillow and local Whisper as the default. The downloader obtains media, the agent interprets frames, and Whisper supplies speech text. Discover homepage content through the actual browser page. Replace a component when evidence shows it makes the current task easier, not because it has more stars.
+
+The following observations describe the source and project documentation reviewed on that date:
+
+- [F2](https://github.com/Johnserf-Seed/f2/blob/main/f2/apps/douyin/dl.py) supports Douyin downloads, but its downloader initialization required cookies. It had not been shown to simplify the working anonymous path, so it remained an alternative rather than a default dependency.
+- [DouK-Downloader](https://github.com/JoeanAmier/TikTokDownloader) supports Douyin/TikTok downloads. Its README stated that the encrypted-parameter algorithm was no longer maintained, and initialization required cookie configuration. It could not support a promise of configuration-free startup.
+- The default repository pages for [bilibili-api](https://github.com/Nemo2011/bilibili-api) and [BBDown](https://github.com/nilaoda/BBDown) indicated archival or discontinued maintenance at review time, so they were not added as core dependencies. Old branch READMEs may remain accessible; check the current repository state when reconsidering them.
+
+These alternatives were inspected through source and documentation, not installed or individually tested. Reuse the working, sample-validated toolchain without repeating the earlier six-tool comparison unless new evidence warrants it.

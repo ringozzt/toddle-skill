@@ -8,6 +8,8 @@ work/
 outputs/
 .env
 .env.*
+# Local harness conversation/session files
+*.ses
 *.cookies
 cookies*.txt
 runtime.json
