@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/toddle-banner.svg" alt="toddle — 让 AI 陪你逛推荐流，顺着好奇心继续看" width="100%">
+  <img src="assets/toddle-banner.jpg" alt="toddle — 手绘风格的 toddle 吉祥物拿着手机，牵着一个小电视伙伴" width="100%">
 </p>
 
 <p align="center">

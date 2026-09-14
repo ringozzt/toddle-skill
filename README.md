@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/toddle-banner.svg" alt="toddle — Explore your feed with an AI companion" width="100%">
+  <img src="assets/toddle-banner.jpg" alt="toddle — a hand-drawn mascot holding a phone, walking beside a small TV companion" width="100%">
 </p>
 
 <p align="center">
